@@ -1,165 +1,152 @@
-import { createServer } from "node:http";
-import { existsSync } from "node:fs";
+/** HTTP API, authenticated event sockets, and static browser application entry point. */
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { delimiter, join, resolve, sep } from "node:path";
+import { resolve, sep, extname } from "node:path";
 import { fileURLToPath } from "node:url";
-import * as pty from "node-pty";
-import { WebSocket, WebSocketServer } from "ws";
+import { WebSocketServer, WebSocket } from "ws";
+import { config } from "./config.js";
+import { Store } from "./store.js";
+import { Files } from "./files.js";
+import { DockerRuntime } from "./runtime.js";
+import { Orchestrator } from "./orchestrator.js";
+import { Auth } from "./auth.js";
+import { Terminals } from "./terminal.js";
+import type { RunEvent } from "@relay/contracts";
 
-const port = Number(process.env.RELAY_PORT ?? 8080);
-if (!Number.isInteger(port) || port < 1 || port > 65535) {
-  throw new Error("RELAY_PORT must be a port between 1 and 65535");
-}
-const target = process.env.RELAY_TARGET ?? "codex";
-if (target !== "codex" && target !== "bash") {
-  throw new Error("RELAY_TARGET must be codex or bash");
-}
-
-function codexCommand(): string {
-  if (process.env.RELAY_CODEX) {
-    const executable = resolve(process.env.RELAY_CODEX);
-    if (!existsSync(executable)) throw new Error(`RELAY_CODEX does not exist: ${executable}`);
-    return executable;
-  }
-  if (process.platform !== "win32") return "codex";
-
-  // node-pty/ConPTY needs a native executable. npm puts codex.cmd on PATH,
-  // while the executable is inside the globally installed platform package.
-  const directories = (process.env.PATH ?? process.env.Path ?? "").split(delimiter);
-  const direct = directories.map((directory) => join(directory, "codex.exe")).find(existsSync);
-  if (direct) return direct;
-
-  const architecture = process.arch === "arm64" ? "arm64" : "x64";
-  const triple = architecture === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
-  for (const directory of directories) {
-    if (!existsSync(join(directory, "codex.cmd"))) continue;
-    const packageName = `codex-win32-${architecture}`;
-    const packageRoots = [
-      join(directory, "node_modules", "@openai", "codex", "node_modules", "@openai", packageName),
-      join(directory, "node_modules", "@openai", packageName),
-      join(directory, "node_modules", "@openai", "codex"),
-    ];
-    for (const packageRoot of packageRoots) {
-      for (const subdirectory of ["bin", "codex"]) {
-        const executable = join(packageRoot, "vendor", triple, subdirectory, "codex.exe");
-        if (existsSync(executable)) return executable;
-      }
-    }
-  }
-  throw new Error(
-    "Codex CLI was not found. In PowerShell run: npm.cmd install -g @openai/codex@latest; " +
-    "then open a new terminal and run codex.cmd --version. " +
-    "Alternatively set RELAY_CODEX to the full path of codex.exe."
-  );
-}
-
-const command = target === "bash" ? (process.env.RELAY_SHELL ?? "bash") : codexCommand();
-const cwd = resolve(process.env.RELAY_CWD ?? process.cwd());
+const store = new Store(config.dataDir), files = new Files(config.dataDir);
+const runtime = new DockerRuntime(config, files, store.installationId);
+const service = new Orchestrator(store, files, runtime, config);
+const auth = await Auth.create(config), terminals = new Terminals(runtime);
 const webRoot = resolve(fileURLToPath(new URL("../../web/dist/", import.meta.url)));
-const maxScrollback = 100_000;
+let system = await runtime.status();
+const statusTimer = setInterval(() => { void runtime.status().then(value => { system = value; }); }, 15_000);
 
-type ClientMessage =
-  | { type: "input"; data: string }
-  | { type: "resize"; cols: number; rows: number };
-type ServerMessage =
-  | { type: "scrollback" | "output"; data: string }
-  | { type: "exit"; exitCode: number; signal?: number };
+async function body(request: IncomingMessage): Promise<Record<string, any>> {
+  if (!request.headers["content-type"]?.startsWith("application/json")) throw Object.assign(new Error("Expected application/json"), { status: 415 });
+  let size = 0; const chunks: Buffer[] = [];
+  for await (const chunk of request) { size += chunk.length; if (size > 2 * 1024 * 1024) throw Object.assign(new Error("Request exceeds 2 MiB"), { status: 413 }); chunks.push(chunk); }
+  try { const value = JSON.parse(Buffer.concat(chunks).toString()); if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(); return value; }
+  catch { throw Object.assign(new Error("Invalid JSON request"), { status: 400 }); }
+}
+function text(value: unknown, name: string, max = 200, allowEmpty = false): string {
+  if (typeof value !== "string" || (!allowEmpty && !value.trim()) || value.length > max) throw Object.assign(new Error(`Invalid ${name}`), { status: 400 });
+  return value;
+}
+function json(response: ServerResponse, value: unknown, status = 200): void { response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }).end(JSON.stringify(value)); }
+function workspace(id: string): void { if (store.workspace(id).state === "discarded") throw Object.assign(new Error("Workspace was discarded"), { status: 410 }); }
 
-const send = (socket: WebSocket, message: ServerMessage): void => {
-  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
-};
-
-// The PTY belongs to the server, not to any WebSocket connection.
-const session = pty.spawn(command, [], {
-  name: "xterm-256color",
-  cwd,
-  cols: 120,
-  rows: 30,
-  env: process.env,
-});
-let scrollback = "";
-let exit: { exitCode: number; signal?: number } | undefined;
-const clients = new Set<WebSocket>();
-
-session.onData((data) => {
-  scrollback = (scrollback + data).slice(-maxScrollback);
-  for (const client of clients) send(client, { type: "output", data });
-});
-session.onExit(({ exitCode, signal }) => {
-  exit = { exitCode, signal };
-  for (const client of clients) send(client, { type: "exit", ...exit });
-  console.log(`${target} exited with code ${exitCode}`);
-});
-
-const contentTypes: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".svg": "image/svg+xml",
-};
 const server = createServer(async (request, response) => {
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    response.writeHead(405).end();
-    return;
-  }
+  response.setHeader("x-content-type-options", "nosniff");
+  response.setHeader("referrer-policy", "same-origin");
+  response.setHeader("content-security-policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'");
   try {
-    const pathname = new URL(request.url ?? "/", `http://${request.headers.host}`).pathname;
-    const path = resolve(webRoot, `.${pathname === "/" ? "/index.html" : pathname}`);
-    if (path !== webRoot && !path.startsWith(webRoot + sep)) {
-      response.writeHead(403).end();
-      return;
+    const url = new URL(request.url ?? "/", "http://relay.local"), path = url.pathname, method = request.method ?? "GET";
+    if (path.startsWith("/api/")) {
+      if (!["GET", "HEAD"].includes(method) && !auth.origin(request)) throw Object.assign(new Error("Unrecognized request origin"), { status: 403 });
+      if (path === "/api/session" && method === "GET") { json(response, { authenticated: auth.authenticated(request) }); return; }
+      if (path === "/api/session" && method === "POST") {
+        const input = await body(request); response.setHeader("set-cookie", auth.login(request, text(input.token, "token", 512)));
+        json(response, { authenticated: true }); return;
+      }
+      if (!auth.authenticated(request)) throw Object.assign(new Error("Sign in to Relay"), { status: 401 });
+      if (path === "/api/session" && method === "DELETE") { response.setHeader("set-cookie", "relay_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"); json(response, { authenticated: false }); return; }
+      if (path === "/api/state" && method === "GET") { json(response, { workspaces: service.workspaces(), runs: service.runs(), system }); return; }
+      if (path === "/api/workspaces" && method === "POST") { const input = await body(request); json(response, await service.import(text(input.name, "name", 80), text(input.repository ?? "", "repository", 2048, true)), 201); return; }
+      const match = path.match(/^\/api\/workspaces\/([a-f0-9-]{36})(?:\/([a-z-]+))?$/);
+      if (match) {
+        const [, id, action] = match; workspace(id);
+        if (method === "POST" && action === "start") { json(response, await service.start(id)); return; }
+        if (method === "POST" && action === "stop") { json(response, await service.stop(id)); return; }
+        if (method === "DELETE" && !action) { await service.discard(id); json(response, { discarded: true }); return; }
+        if (method === "GET" && action === "files") { json(response, await files.list(id, url.searchParams.get("path") ?? "")); return; }
+        if (method === "GET" && action === "file") { json(response, await files.read(id, text(url.searchParams.get("path"), "path", 4096))); return; }
+        if (method === "PUT" && action === "file") {
+          const input = await body(request), path = text(input.path, "path", 4096), content = text(input.content, "content", 1024 * 1024, true);
+          const version = input.version === null ? null : text(input.version, "version", 64);
+          json(response, await service.exclusive(async () => {
+            const current = store.workspace(id);
+            if (current.state === "discarded") throw Object.assign(new Error("Workspace was discarded"), { status: 410 });
+            if (current.state === "unknown") throw Object.assign(new Error("Wait for Docker to confirm the workspace state before saving"), { status: 409 });
+            if (current.state === "running") return runtime.freeze(id, () => files.save(id, path, content, version));
+            return files.save(id, path, content, version);
+          })); return;
+        }
+        if (method === "POST" && action === "experiment") { const input = await body(request); json(response, await service.copies(id, [{ name: text(input.name, "name", 80) }]), 201); return; }
+        if (method === "POST" && action === "parallel") {
+          const input = await body(request);
+          if (!Array.isArray(input.tasks) || input.tasks.length < 2 || input.tasks.length > 8) throw new Error("Provide between 2 and 8 tasks");
+          const tasks = input.tasks.map(task => ({ name: text(task.name, "task name", 80), prompt: text(task.prompt, "prompt", 20_000) }));
+          json(response, await service.copies(id, tasks), 201); return;
+        }
+        if (method === "POST" && action === "runs") { const input = await body(request); json(response, await service.exclusive(async () => service.enqueue(id, text(input.prompt, "prompt", 20_000))), 201); return; }
+        if (method === "POST" && action === "review") { json(response, await service.propose(id)); return; }
+      }
+      const run = path.match(/^\/api\/runs\/([a-f0-9-]{36})\/(cancel|events|approvals)$/);
+      if (run) {
+        const [, id, action] = run; store.run(id);
+        if (method === "POST" && action === "cancel") { json(response, await service.cancel(id)); return; }
+        if (method === "GET" && action === "events") { const after = Number(url.searchParams.get("after") ?? 0); if (!Number.isSafeInteger(after) || after < 0) throw new Error("Invalid event cursor"); json(response, store.events(id, after)); return; }
+        if (method === "GET" && action === "approvals") { json(response, service.approvals(id)); return; }
+        if (method === "POST" && action === "approvals") {
+          const input = await body(request); if (typeof input.accepted !== "boolean") throw new Error("Invalid approval decision");
+          await service.approve(id, text(input.requestId, "request id", 100), input.accepted); json(response, { resolved: true }); return;
+        }
+      }
+      const apply = path.match(/^\/api\/changes\/([a-f0-9-]{36})\/apply$/);
+      if (apply && method === "POST") { json(response, await service.apply(apply[1])); return; }
+      throw Object.assign(new Error("API route not found"), { status: 404 });
     }
-    const file = await stat(path);
-    if (!file.isFile()) throw new Error("Not a file");
-    const extension = path.slice(path.lastIndexOf("."));
-    response.writeHead(200, {
-      "content-type": contentTypes[extension] ?? "application/octet-stream",
-      "cache-control": "no-store",
-    });
-    if (request.method === "HEAD") response.end();
-    else response.end(await readFile(path));
-  } catch {
-    response.writeHead(404).end("Not found");
+    if (method !== "GET" && method !== "HEAD") throw Object.assign(new Error("Method not allowed"), { status: 405 });
+    const filePath = resolve(webRoot, `.${decodeURIComponent(path === "/" ? "/index.html" : path)}`);
+    if (!filePath.startsWith(webRoot + sep)) throw Object.assign(new Error("Not found"), { status: 404 });
+    const info = await stat(filePath); if (!info.isFile()) throw Object.assign(new Error("Not found"), { status: 404 });
+    response.setHeader("content-type", ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".woff2": "font/woff2" } as Record<string,string>)[extname(filePath)] ?? "application/octet-stream");
+    response.setHeader("cache-control", "no-cache"); response.end(method === "HEAD" ? undefined : await readFile(filePath));
+  } catch (error) {
+    const value = error as Error & { status?: number; code?: string };
+    json(response, { error: value.message }, value.status ?? (value.code === "ENOENT" ? 404 : 400));
   }
 });
 
-const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+const sockets = new WebSocketServer({ noServer: true, maxPayload: 32 * 1024 });
 server.on("upgrade", (request, socket, head) => {
-  const origin = request.headers.origin;
-  const host = request.headers.host;
-  if (request.url !== "/ws" || !origin || !host || origin !== `http://${host}`) {
-    socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
-    socket.destroy();
-    return;
-  }
-  wss.handleUpgrade(request, socket, head, (client) => wss.emit("connection", client, request));
-});
-wss.on("connection", (socket) => {
-  clients.add(socket);
-  send(socket, { type: "scrollback", data: scrollback });
-  if (exit) send(socket, { type: "exit", ...exit });
-
-  socket.on("message", (raw) => {
-    if (exit) return;
-    let message: ClientMessage;
-    try {
-      message = JSON.parse(raw.toString()) as ClientMessage;
-    } catch {
+  if (!auth.authenticated(request) || !auth.origin(request)) { socket.end("HTTP/1.1 403 Forbidden\r\n\r\n"); return; }
+  const url = new URL(request.url ?? "/", "http://relay.local");
+  if (!["/ws/events", "/ws/terminal"].includes(url.pathname)) { socket.end("HTTP/1.1 404 Not Found\r\n\r\n"); return; }
+  sockets.handleUpgrade(request, socket, head, client => {
+    if (url.pathname === "/ws/terminal") {
+      try {
+        const id = url.searchParams.get("workspaceId") ?? "";
+        if (store.workspace(id).state !== "running") throw new Error("Start the workspace first");
+        terminals.attach(id, client);
+      } catch (error) { client.send(JSON.stringify({ type: "error", error: (error as Error).message })); client.close(1008); }
       return;
     }
-    if (message.type === "input" && typeof message.data === "string" && message.data.length <= 16_384) {
-      session.write(message.data);
-    } else if (
-      message.type === "resize" &&
-      Number.isInteger(message.cols) && message.cols >= 2 && message.cols <= 500 &&
-      Number.isInteger(message.rows) && message.rows >= 2 && message.rows <= 200
-    ) {
-      session.resize(message.cols, message.rows);
-    }
+    const send = (value: unknown) => { if (client.bufferedAmount > 1024 * 1024) client.close(1013, "Reconnect to catch up"); else if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(value)); };
+    // Sockets signal invalidation; the client catches up from the durable HTTP event cursor.
+    const event = (value: RunEvent) => send({ type: "event", runId: value.runId });
+    const change = () => send({ type: "change" });
+    store.on("event", event); store.on("change", change);
+    send({ type: "connected" });
+    client.on("close", () => { store.off("event", event); store.off("change", change); });
   });
-  socket.on("close", () => clients.delete(socket));
 });
 
-server.listen(port, "127.0.0.1", () => {
-  console.log(`AgentRelay: http://127.0.0.1:${port} (${target} in ${cwd})`);
+server.on("error", error => {
+  console.error(`Relay could not listen: ${error.message}`);
+  clearInterval(statusTimer); store.close(); process.exitCode = 1;
 });
+server.listen(config.port, config.host, () => {
+  service.begin();
+  console.log(`Relay: http://${config.host}:${config.port}`);
+  console.log(`Owner access token: ${resolve(config.dataDir, "access-token")} (or RELAY_ACCESS_TOKEN)`);
+  console.log(`Docker: ${system.message}`);
+});
+let shuttingDown = false;
+async function shutdown(): Promise<void> {
+  if (shuttingDown) return; shuttingDown = true;
+  clearInterval(statusTimer); server.close();
+  for (const client of sockets.clients) client.close(1001, "Relay stopping");
+  terminals.close(); await service.shutdown(); store.close();
+}
+process.on("SIGINT", () => void shutdown()); process.on("SIGTERM", () => void shutdown());

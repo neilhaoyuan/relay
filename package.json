@@ -1,11 +1,23 @@
 {
   "name": "agentrelay",
   "private": true,
-  "workspaces": ["server", "web"],
+  "workspaces": [
+    "server",
+    "web",
+    "packages/contracts"
+  ],
+  "engines": {
+    "node": ">=22.16.0"
+  },
   "scripts": {
     "build": "npm run build -w web && npm run build -w server",
-    "dev": "npm run build && node server/dist/index.js",
-    "start": "node server/dist/index.js",
-    "check": "npm run check -w web && npm run check -w server"
+    "dev": "npm run build && npm start",
+    "start": "node --env-file-if-exists=.env server/dist/index.js",
+    "check": "npm run check -w web && npm run check -w server",
+    "test": "npm run build -w server && node --test tests/*.test.mjs",
+    "test:browser": "npm run build && node tests/browser-smoke.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.0"
   }
 }
