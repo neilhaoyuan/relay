@@ -3,13 +3,57 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>terminal</title>
+    <meta name="description" content="Relay — your persistent workspace for code, agents, and experiments." />
+    <title>Relay · Development workspace</title>
   </head>
   <body>
-    <main>
-      <div id="terminal" aria-label="Codex terminal"></div>
-      <div id="status" role="status" hidden></div>
-    </main>
+    <section id="login" class="login-screen" hidden>
+      <form id="login-form" class="login-card">
+        <div class="brand"><span class="brand-mark">r</span> relay<span class="tag">PRIVATE WORKSPACE</span></div>
+        <h1>Your code.<br>Your agents.<br>Your workspace.</h1>
+        <p>Connect to your personal development server.</p>
+        <label>Access token<input id="login-token" type="password" autocomplete="current-password" required placeholder="Paste your server access token" /></label>
+        <button class="primary" type="submit">Open workspace <span>↗</span></button>
+        <p class="help">Your token is in <code>.relay-data/access-token</code> on the server, or your configured <code>RELAY_ACCESS_TOKEN</code>.</p>
+        <p id="login-error" class="error" role="alert"></p>
+      </form>
+    </section>
+    <div id="app" class="app" hidden>
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">r</span> relay <span class="tag">WORKSPACE</span></div>
+        <div class="top-right"><span id="connection" class="connection">Connecting</span><button id="logout" class="quiet">Sign out</button></div>
+      </header>
+      <aside class="sidebar">
+        <div class="section-heading">WORKSPACES <button id="new-workspace" class="icon-button" title="Import or create a workspace" aria-label="New workspace">+</button></div>
+        <div id="workspaces" class="workspace-list"></div>
+        <div class="sidebar-bottom"><div class="section-heading">YOUR SERVER</div><div id="system-status"></div><p class="muted small">Work continues when you disconnect.</p></div>
+      </aside>
+      <main class="main-area">
+        <section id="welcome" class="welcome">
+          <span class="eyebrow">A PLACE TO BUILD</span><h1>Give your next idea<br>a workspace.</h1>
+          <p>Bring in a repository, work with Codex, and explore different approaches in separate environments.</p>
+          <button id="welcome-new" class="primary">Create your first workspace <span>+</span></button>
+          <div class="feature-row"><div><span>01</span><h3>Keep building</h3><p>Your files and conversations stay here.</p></div><div><span>02</span><h3>Try something</h3><p>Experiment in a disposable copy.</p></div><div><span>03</span><h3>Work in parallel</h3><p>Give separate tasks to separate agents.</p></div></div>
+        </section>
+        <section id="workspace-view" class="workspace-view" hidden>
+          <div class="workspace-bar"><div><span class="eyebrow" id="workspace-kind">PRIMARY WORKSPACE</span><h1 id="workspace-name"></h1></div><div class="workspace-actions"><span id="environment-state" class="badge"></span><button id="environment-toggle">Start environment</button><button id="experiment-button">◇ Experiment</button><button id="parallel-button">⑂ Parallel tasks</button><button id="review-button" hidden>Review changes</button><button id="discard-button" class="danger quiet" hidden>Discard</button></div></div>
+          <div id="runtime-notice" class="notice" hidden></div>
+          <div class="studio">
+            <aside class="explorer"><div class="pane-heading">EXPLORER <div><button id="new-file" class="icon-button" title="New file" aria-label="New file">+</button><button id="refresh-files" class="icon-button" title="Refresh files" aria-label="Refresh files">↻</button></div></div><div id="file-tree" class="file-tree"></div></aside>
+            <section class="code-column">
+              <div class="editor-toolbar"><div id="file-tabs" class="file-tabs"></div><button id="reload-file" class="quiet" title="Reload file from disk">↻</button><button id="save-file" class="quiet" disabled>Save</button></div>
+              <div class="editor-region"><div id="editor-placeholder" class="editor-placeholder"><span class="code-icon">&lt;/&gt;</span><h2>Make something yours.</h2><p>Choose a file from the explorer to start editing.</p><span class="keyboard-hint">Ctrl / ⌘ S to save · Ctrl / ⌘ F to find</span></div><div id="editor" hidden></div></div>
+              <div class="editor-status"><span id="file-status">No file open</span><span>UTF-8</span></div>
+              <section class="terminal-pane"><div class="pane-heading">TERMINAL <div><button id="codex-login" class="quiet">Log into Codex</button><button id="connect-terminal" class="quiet">Connect</button></div></div><div id="terminal-message" class="terminal-message">Start the environment to use its terminal.</div><div id="terminal"></div></section>
+            </section>
+            <aside class="agent-pane"><div class="pane-heading"><span>CODEX</span><span id="agent-state" class="badge">Ready</span></div><div class="run-picker"><label for="run-history" class="sr-only">Task history</label><select id="run-history"><option value="">Task history</option></select><button id="cancel-run" class="quiet danger" hidden>Cancel</button></div><div id="agent-output" class="agent-output"><div class="agent-empty"><span class="agent-orbit">✳</span><h2>A little help.<br>A lot of possibility.</h2><p>Ask Codex to explore the repository, build a feature, or fix a bug.</p></div></div><div id="approvals"></div><form id="prompt-form" class="prompt-form"><label for="prompt" class="sr-only">Task for Codex</label><textarea id="prompt" rows="3" placeholder="What are we building?" maxlength="20000" required></textarea><div class="prompt-footer"><span>Works in this workspace</span><button id="send-prompt" class="primary" type="submit">Run task ↑</button></div></form></aside>
+          </div>
+        </section>
+      </main>
+      <footer class="statusbar"><span><span class="status-dot"></span> Personal development environment</span><span id="footer-status">Relay / 0.1</span></footer>
+    </div>
+    <dialog id="modal"><form id="modal-form"><div class="modal-top"><span class="eyebrow">RELAY</span><button type="button" id="close-modal" class="icon-button" aria-label="Close dialog">×</button></div><h2 id="modal-title"></h2><div id="modal-body"></div><p id="modal-error" class="error" role="alert"></p><div class="modal-footer"><button type="button" id="cancel-modal">Cancel</button><button id="modal-submit" class="primary" type="submit">Create</button></div></form></dialog>
+    <div id="toast" class="toast" role="status" hidden></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
