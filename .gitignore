@@ -3,4 +3,7 @@ node_modules/
 server/dist/
 web/dist/
 *.log
-/docs
+.env
+.relay-data/
+.relay-backup/
+.test-data/

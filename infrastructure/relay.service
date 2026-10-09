@@ -1,0 +1,24 @@
+# Host-side supervisor. The backend controls Docker; workload containers never get its socket.
+[Unit]
+Description=Relay personal development workspace
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=relay
+Group=relay
+SupplementaryGroups=docker
+WorkingDirectory=/opt/relay
+Environment=NODE_ENV=production
+Environment=RELAY_DATA_DIR=/var/lib/relay
+EnvironmentFile=-/opt/relay/.env
+ExecStart=/usr/bin/node /opt/relay/server/dist/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=90
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
