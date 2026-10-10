@@ -1,5 +1,7 @@
 # AgentRelay project spec
 
+> Historical terminal prototype specification. For the current VM workspace platform, see [ARCHITECTURE.md](ARCHITECTURE.md), [FILE_MAP.md](FILE_MAP.md), and [VM_SETUP.md](VM_SETUP.md). The original specification is retained below.
+
 ## Purpose
 
 AgentRelay is a self-hosted control plane for Codex CLI sessions. A server owns each Codex process through a pseudoterminal (PTY). Browser and future local CLI clients connect to that server. Disconnecting a client does not stop the process.

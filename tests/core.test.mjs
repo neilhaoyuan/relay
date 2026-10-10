@@ -9,7 +9,7 @@ import { EventEmitter } from "node:events";
 import { Store } from "../server/dist/store.js";
 import { Files } from "../server/dist/files.js";
 import { Orchestrator } from "../server/dist/orchestrator.js";
-import { Auth } from "../server/dist/auth.js";
+import { Access } from "../server/dist/auth.js";
 
 const testRoot = resolve(".test-data");
 await mkdir(testRoot, { recursive: true });
@@ -128,15 +128,32 @@ test("restart reconciliation stops uncertain tasks and preserves queued work whi
   const next = service.enqueue(main.id,"continue"); await service.tick(); await settled(); assert.equal(store.run(next.id).state,"running");
 });
 
-test("owner sessions require the right token, signature, and mutation origin", () => {
-  const auth = new Auth("a-long-test-token-that-is-not-a-secret",config);
-  const request = { headers: { origin:"http://localhost:8080" }, socket:{remoteAddress:"127.0.0.1"} };
-  assert.equal(auth.origin(request),true); assert.equal(auth.authenticated(request),false);
-  assert.throws(()=>auth.login(request,"wrong"),/Incorrect/);
-  const cookie = auth.login(request,"a-long-test-token-that-is-not-a-secret").split(";")[0];
-  assert.equal(auth.authenticated({...request,headers:{cookie}}),true);
-  assert.equal(auth.authenticated({...request,headers:{cookie:cookie+"tampered"}}),false);
-  assert.equal(auth.origin({...request,headers:{origin:"https://attacker.example"}}),false);
+test("network access accepts loopback and configured Serve hosts, rejecting rebinding and cross-site requests", () => {
+  const access = new Access({...config, host:"127.0.0.1", origin:"https://relay.example.ts.net"});
+  const request = { headers: { host:"localhost:8080", origin:"http://localhost:8080" }, socket:{remoteAddress:"127.0.0.1"} };
+  assert.equal(access.allowed(request),true); assert.equal(access.origin(request),true);
+  const remote = {...request,headers:{host:"relay.example.ts.net",origin:"https://relay.example.ts.net"}};
+  assert.equal(access.allowed(remote),true); assert.equal(access.origin(remote),true);
+  assert.equal(access.allowed({...request,headers:{host:"attacker.example"}}),false);
+  assert.equal(access.allowed({...request,headers:{...request.headers,"sec-fetch-site":"cross-site"}}),false);
+  assert.equal(access.allowed({...remote,socket:{remoteAddress:"100.64.0.1"}}),false);
+  assert.equal(access.origin({...request,headers:{origin:"https://attacker.example"}}),false);
+  assert.equal(access.origin({...request,headers:{}}),false);
+  assert.throws(()=>new Access({...config,host:"0.0.0.0"}),/127.0.0.1/);
+});
+
+test("restart recovery leaves interrupted paused tasks stopped and unpauses idle environments", async t => {
+  const { service, runtime, store } = await fixture(t);
+  const interrupted = await service.import("interrupted", ""), idle = await service.import("idle", "");
+  const run = service.enqueue(interrupted.id, "previous task");
+  run.state = "running"; store.put("run", run.id, run);
+  runtime.containers.set(interrupted.id, "paused"); runtime.containers.set(idle.id, "paused");
+  await service.tick();
+  assert.equal(store.run(run.id).state, "interrupted");
+  assert.equal(runtime.containers.get(interrupted.id), "exited");
+  assert.equal(store.workspace(interrupted.id).state, "stopped");
+  assert.equal(runtime.containers.get(idle.id), "running");
+  assert.equal(runtime.agents.length, 0);
 });
 
 test("a batch larger than container capacity keeps draining as completed workers stop", async t => {

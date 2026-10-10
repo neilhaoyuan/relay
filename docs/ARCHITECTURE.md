@@ -10,7 +10,8 @@ The code editor is integrated CodeMirror rather than code-server in this first b
 
 ```mermaid
 flowchart TD
-  Browser[Browser IDE] -->|Authenticated HTTP and WebSockets| Server[Relay Node backend]
+  Browser[Browser IDE] -->|Private HTTPS| Tailscale[Tailscale Serve]
+  Tailscale -->|Loopback HTTP and WebSockets| Server[Relay Node backend]
   Server --> Store[SQLite metadata and event journal]
   Server --> Files[Persistent project files]
   Server --> Docker[Docker runtime]
@@ -21,6 +22,10 @@ flowchart TD
 ```
 
 The backend runs on the host and owns Docker. Containers receive only their project directory and the shared Codex home; they never receive the Docker socket. The owner may import a repository using host Git authentication, but host SSH configuration is not mounted into project containers.
+
+Remote access is delegated to Tailscale Serve and its access rules. Relay has no login token or session cookie and only binds to `127.0.0.1`. Its access module checks the loopback peer, allowed Host, browser fetch metadata, and mutation/WebSocket origins. These checks prevent common cross-site and DNS-rebinding paths; they do not authenticate local processes or distinguish Tailscale users. Every permitted caller has full control. Existing token files/settings are ignored. Local development accesses the same service directly over loopback.
+
+The browser layout module owns resizable panels, left/right Codex docking, visibility, terminal maximization, and the command palette. It saves dimensions and visibility to browser localStorage, clamps panels to the viewport, and uses overlays on small screens. Tabs reorder within one editor group and preserve each open file's CodeMirror state, including undo history. Floating windows and split editor groups are not implemented.
 
 Authentication and Codex session history share a persistent `/codex` mount across containers. This deliberately uses the agreed trusted-repository model. Project code can potentially access the Codex login and other Codex session records. Project source trees are separate. This implementation does not claim strong credential isolation.
 

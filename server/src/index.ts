@@ -1,4 +1,4 @@
-/** HTTP API, authenticated event sockets, and static browser application entry point. */
+/** Private-network HTTP API, origin-checked event sockets, and static browser entry point. */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { resolve, sep, extname } from "node:path";
@@ -9,14 +9,15 @@ import { Store } from "./store.js";
 import { Files } from "./files.js";
 import { DockerRuntime } from "./runtime.js";
 import { Orchestrator } from "./orchestrator.js";
-import { Auth } from "./auth.js";
+import { Access } from "./auth.js";
 import { Terminals } from "./terminal.js";
 import type { RunEvent } from "@relay/contracts";
 
+const access = new Access(config);
 const store = new Store(config.dataDir), files = new Files(config.dataDir);
 const runtime = new DockerRuntime(config, files, store.installationId);
 const service = new Orchestrator(store, files, runtime, config);
-const auth = await Auth.create(config), terminals = new Terminals(runtime);
+const terminals = new Terminals(runtime);
 const webRoot = resolve(fileURLToPath(new URL("../../web/dist/", import.meta.url)));
 let system = await runtime.status();
 const statusTimer = setInterval(() => { void runtime.status().then(value => { system = value; }); }, 15_000);
@@ -40,16 +41,11 @@ const server = createServer(async (request, response) => {
   response.setHeader("referrer-policy", "same-origin");
   response.setHeader("content-security-policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'");
   try {
+    if (!access.allowed(request)) throw Object.assign(new Error("Access requires localhost or the configured Tailscale Serve address"), { status: 403 });
     const url = new URL(request.url ?? "/", "http://relay.local"), path = url.pathname, method = request.method ?? "GET";
     if (path.startsWith("/api/")) {
-      if (!["GET", "HEAD"].includes(method) && !auth.origin(request)) throw Object.assign(new Error("Unrecognized request origin"), { status: 403 });
-      if (path === "/api/session" && method === "GET") { json(response, { authenticated: auth.authenticated(request) }); return; }
-      if (path === "/api/session" && method === "POST") {
-        const input = await body(request); response.setHeader("set-cookie", auth.login(request, text(input.token, "token", 512)));
-        json(response, { authenticated: true }); return;
-      }
-      if (!auth.authenticated(request)) throw Object.assign(new Error("Sign in to Relay"), { status: 401 });
-      if (path === "/api/session" && method === "DELETE") { response.setHeader("set-cookie", "relay_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"); json(response, { authenticated: false }); return; }
+      if (!["GET", "HEAD"].includes(method) && !access.origin(request)) throw Object.assign(new Error("Unrecognized request origin"), { status: 403 });
+      if (path === "/api/session" && method === "GET") { json(response, { authenticated: true, access: "network" }); return; }
       if (path === "/api/state" && method === "GET") { json(response, { workspaces: service.workspaces(), runs: service.runs(), system }); return; }
       if (path === "/api/workspaces" && method === "POST") { const input = await body(request); json(response, await service.import(text(input.name, "name", 80), text(input.repository ?? "", "repository", 2048, true)), 201); return; }
       const match = path.match(/^\/api\/workspaces\/([a-f0-9-]{36})(?:\/([a-z-]+))?$/);
@@ -79,6 +75,18 @@ const server = createServer(async (request, response) => {
           json(response, await service.copies(id, tasks), 201); return;
         }
         if (method === "POST" && action === "runs") { const input = await body(request); json(response, await service.exclusive(async () => service.enqueue(id, text(input.prompt, "prompt", 20_000))), 201); return; }
+        if (method === "POST" && action === "tasks") {
+          const input = await body(request), prompt = text(input.prompt, "prompt", 20_000), name = text(input.name, "task name", 80);
+          if (typeof input.isolated !== "boolean") throw new Error("Choose an execution environment");
+          if (input.isolated) {
+            const [copy] = await service.copies(id, [{ name, prompt }]);
+            json(response, { workspace: copy, run: service.runs().find(run => run.workspaceId === copy.id) }, 201);
+          } else {
+            const run = await service.exclusive(async () => service.enqueue(id, prompt, name));
+            json(response, { workspace: store.workspace(id), run }, 201);
+          }
+          return;
+        }
         if (method === "POST" && action === "review") { json(response, await service.propose(id)); return; }
       }
       const run = path.match(/^\/api\/runs\/([a-f0-9-]{36})\/(cancel|events|approvals)$/);
@@ -110,7 +118,7 @@ const server = createServer(async (request, response) => {
 
 const sockets = new WebSocketServer({ noServer: true, maxPayload: 32 * 1024 });
 server.on("upgrade", (request, socket, head) => {
-  if (!auth.authenticated(request) || !auth.origin(request)) { socket.end("HTTP/1.1 403 Forbidden\r\n\r\n"); return; }
+  if (!access.allowed(request) || !access.origin(request)) { socket.end("HTTP/1.1 403 Forbidden\r\n\r\n"); return; }
   const url = new URL(request.url ?? "/", "http://relay.local");
   if (!["/ws/events", "/ws/terminal"].includes(url.pathname)) { socket.end("HTTP/1.1 404 Not Found\r\n\r\n"); return; }
   sockets.handleUpgrade(request, socket, head, client => {
@@ -139,7 +147,7 @@ server.on("error", error => {
 server.listen(config.port, config.host, () => {
   service.begin();
   console.log(`Relay: http://${config.host}:${config.port}`);
-  console.log(`Owner access token: ${resolve(config.dataDir, "access-token")} (or RELAY_ACCESS_TOKEN)`);
+  console.log(`Access: localhost${config.origin ? ` and ${config.origin}` : "; configure RELAY_PUBLIC_ORIGIN for Tailscale Serve"}`);
   console.log(`Docker: ${system.message}`);
 });
 let shuttingDown = false;

@@ -20,7 +20,7 @@ npm start
 
 Run the server as a regular user with access to Docker. Do not run two Relay processes against the same data directory.
 
-Read `.relay-data/access-token` on the VM and enter it in the browser. Alternatively configure `RELAY_ACCESS_TOKEN` as a random string of at least 24 characters before starting; no token file is written when that variable is set.
+Relay opens directly without an access token. Local processes and anyone allowed to reach its Tailscale Serve endpoint have full control. Keep `RELAY_HOST=127.0.0.1`; Relay rejects other bind addresses. Old access-token files and `RELAY_ACCESS_TOKEN` environment settings are ignored.
 
 For initial access, an SSH tunnel is sufficient:
 
@@ -28,7 +28,41 @@ For initial access, an SSH tunnel is sufficient:
 ssh -L 8080:127.0.0.1:8080 your-user@your-vm
 ```
 
-Open `http://127.0.0.1:8080` locally. For Tailscale Serve, expose the loopback service through your private tailnet HTTPS name and set `RELAY_PUBLIC_ORIGIN` to that exact origin, without a trailing slash. Restart Relay after configuration changes. The public origin is used for browser-origin validation and secure session cookies.
+Open `http://127.0.0.1:8080` locally. For everyday access from your other devices, configure Tailscale below.
+
+## Access from anywhere with Tailscale
+
+Install [Tailscale on the Linux VM](https://tailscale.com/download/linux) and on each laptop, phone, or tablet you want to use. Connect them to the same personal Tailscale network. On the VM, authenticate through the link printed by:
+
+```sh
+sudo tailscale up
+tailscale status
+```
+
+Once Relay is running on the VM, configure private HTTPS forwarding:
+
+```sh
+sudo tailscale serve --bg http://127.0.0.1:8080
+tailscale serve status
+```
+
+Follow the HTTPS enablement link if prompted, then rerun the command if needed. Copy the actual `https://...ts.net` address from its output. Serve makes Relay accessible to devices allowed by your Tailscale access rules. The `--bg` configuration resumes after a reboot when Tailscale starts. [Serve documentation](https://tailscale.com/docs/features/tailscale-serve), [command reference](https://tailscale.com/docs/reference/tailscale-cli/serve).
+
+Edit the VM checkout's `.env`, replacing the example hostname with that actual address:
+
+```dotenv
+RELAY_HOST=127.0.0.1
+RELAY_PORT=8080
+RELAY_PUBLIC_ORIGIN=https://your-vm.your-tailnet.ts.net
+```
+
+Use no trailing slash or path. Keep the other settings, especially `RELAY_DATA_DIR`. Restart Relay: restart `npm start` for a manual launch, or run `sudo systemctl restart relay` if you installed the service below. Relay checks this host and origin for HTTP requests and WebSocket connections.
+
+On your other device, connect Tailscale and open that HTTPS URL. The IDE opens directly: Tailscale controls remote access, and Relay has no additional login screen. GitHub and Codex still require their own logins. Restrict the service to your intended devices/users through your Tailscale access rules.
+
+Daily use is now: connect Tailscale, open your saved Relay URL, and work. The VM and Relay must remain running. Tailscale must be connected on the viewing device. Enable the Relay systemd service below for startup after reboot.
+
+Check access from a second network, then open a workspace and verify the connection indicator and terminal. If requests or sockets fail, check the exact `RELAY_PUBLIC_ORIGIN` and restart Relay. If the URL cannot be reached, check both devices in `tailscale status`, your Tailscale access rules, and `tailscale serve status`. If Serve reports a backend error, check that Relay is running on port 8080.
 
 ## First workspace and Codex login
 

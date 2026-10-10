@@ -17,6 +17,7 @@ export interface Workspace {
 export type RunState = "queued" | "starting" | "running" | "waiting" | "stopping" | "completed" | "failed" | "cancelled" | "interrupted";
 export interface AgentRun {
   id: string;
+  title?: string;
   workspaceId: string;
   prompt: string;
   state: RunState;

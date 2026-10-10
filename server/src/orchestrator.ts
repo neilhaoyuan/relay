@@ -90,7 +90,7 @@ export class Orchestrator {
         copies.forEach((copy, index) => {
           copy.baseFingerprint = result.fingerprint; copy.baselineRevision = result.revisions[index]; this.save(copy);
           this.store.put("operation", copy.id, { state: "completed" });
-          if (tasks[index].prompt) this.enqueue(copy.id, tasks[index].prompt!);
+          if (tasks[index].prompt) this.enqueue(copy.id, tasks[index].prompt!, tasks[index].name);
         });
         return copies;
       } catch (error) {
@@ -102,10 +102,10 @@ export class Orchestrator {
       }
     });
   }
-  enqueue(id: string, prompt: string): AgentRun {
+  enqueue(id: string, prompt: string, title?: string): AgentRun {
     this.live(id);
     if (this.busy(id)) throw conflict("This workspace already has an active or queued task");
-    const run: AgentRun = { id: randomUUID(), workspaceId: id, prompt, state: "queued", createdAt: now(), startedAt: null, finishedAt: null, error: null, threadId: null, turnId: null };
+    const run: AgentRun = { id: randomUUID(), title, workspaceId: id, prompt, state: "queued", createdAt: now(), startedAt: null, finishedAt: null, error: null, threadId: null, turnId: null };
     this.store.put("run", run.id, run); this.store.event(run.id, "run/queued", { prompt }); return run;
   }
   async cancel(runId: string): Promise<AgentRun> {
@@ -179,7 +179,7 @@ export class Orchestrator {
     this.timer = setInterval(() => void this.tick(), 2000); void this.tick();
   }
   private async recover(): Promise<void> {
-    const containers = await this.runtime.list();
+    await this.runtime.list();
     for (const run of this.runs().filter(run => !terminal.has(run.state) && run.state !== "queued")) {
       await this.runtime.stop(run.workspaceId);
       this.state(run, "interrupted", "Backend restarted. Files and conversation history were retained; send a new prompt to continue.");
@@ -198,7 +198,8 @@ export class Orchestrator {
       // An interrupted promotion is never replayed automatically; preserve its audit record.
       if (operation.type === "apply" && operation.proposalId) this.store.put("operation", operation.proposalId, { ...operation, state: "needs-review" });
     }
-    for (const container of containers) {
+    // Stops and cleanup above changed Docker state; never restart from a stale paused entry.
+    for (const container of await this.runtime.list()) {
       if (!this.store.get("workspace", container.workspaceId)) await this.runtime.remove(container.workspaceId);
       else if (container.state === "paused") await this.runtime.start(container.workspaceId);
     }
