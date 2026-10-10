@@ -32,7 +32,7 @@ function diffTable(file: PatchFile): string {
     else if (inHunk && line.startsWith("\\")) { flush(); rows.push(`<tr class="diff-hunk"><td colspan="4">${html(line)}</td></tr>`); }
   }
   flush();
-  return (rows.length ? `<div class="diff-scroll"><table class="split-diff"><thead><tr><th colspan="2">Snapshot</th><th colspan="2">Result</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>` : `<pre class="diff-note">${html(file.lines.slice(0, 20).join("\n"))}</pre>`) + (truncated ? '<p class="diff-note">Preview limited to 2,000 lines. Download the complete patch below.</p>' : "");
+  return (rows.length ? `<div class="diff-scroll"><table class="split-diff"><colgroup><col style="width:34px"><col><col style="width:34px"><col></colgroup><thead><tr><th colspan="2">Snapshot</th><th colspan="2">Result</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>` : `<pre class="diff-note">${html(file.lines.slice(0, 20).join("\n"))}</pre>`) + (truncated ? '<p class="diff-note">Preview limited to 2,000 lines. Download the complete patch below.</p>' : "");
 }
 
 export class ChangeReview {
@@ -40,6 +40,8 @@ export class ChangeReview {
   private generation = 0;
   private proposals = new Map<string, ChangeProposal>();
   private selectedFiles = new Map<string, number>();
+  private applying = new Set<string>();
+  private loads = new Map<string, number>();
   constructor(private actions: { apply: (proposal: ChangeProposal) => Promise<void>; code: (id: string, path?: string) => void; error: (message: string) => void }) {
     el("load-review").onclick = () => { const id = (el("review-target") as HTMLSelectElement).value; if (id) void this.open([id]); };
     el("review-panels").addEventListener("click", event => {
@@ -56,8 +58,9 @@ export class ChangeReview {
         link.href = url; link.download = `relay-${id}.patch`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
       if (action === "apply") {
-        button.disabled = true;
-        void this.actions.apply(proposal).catch(error => { this.actions.error((error as Error).message); const message = this.card(id)?.querySelector<HTMLElement>(".review-error"); if (message) message.textContent = (error as Error).message; }).finally(() => this.updateButtons());
+        if (this.applying.has(id)) return;
+        this.applying.add(id); button.disabled = true;
+        void this.actions.apply(proposal).catch(error => { this.actions.error((error as Error).message); const message = this.card(id)?.querySelector<HTMLElement>(".review-error"); if (message) message.textContent = (error as Error).message; }).finally(() => { this.applying.delete(id); this.updateButtons(); });
       }
     });
   }
@@ -79,13 +82,14 @@ export class ChangeReview {
   private async reload(id: string): Promise<void> { await this.load(id, this.generation); }
   private async load(id: string, generation: number): Promise<void> {
     const card = this.card(id); if (!card) return;
+    const load = (this.loads.get(id) ?? 0) + 1; this.loads.set(id, load);
     card.innerHTML = '<p class="diff-note">Capturing changes…</p>';
     try {
       const proposal = await api<ChangeProposal>(`/workspaces/${id}/review`, "POST", {});
-      if (generation !== this.generation) return;
+      if (generation !== this.generation || this.loads.get(id) !== load) return;
       this.proposals.set(id, proposal); this.render(id, proposal);
     } catch (error) {
-      if (generation !== this.generation || !this.card(id)) return;
+      if (generation !== this.generation || this.loads.get(id) !== load || !this.card(id)) return;
       this.card(id)!.innerHTML = `<h2>${html(this.state?.workspaces.find(w => w.id === id)?.name ?? "Experiment")}</h2><p class="review-error">${html((error as Error).message)}</p><button data-review-action="refresh">Retry review</button>`;
     }
   }
@@ -102,7 +106,7 @@ export class ChangeReview {
       const workspace = this.state.workspaces.find(w => w.id === id), parent = this.state.workspaces.find(w => w.id === proposal.parentId);
       const busy = this.state.runs.some(run => [id, proposal.parentId].includes(run.workspaceId) && !terminalStates.has(run.state));
       const button = this.card(id)?.querySelector<HTMLButtonElement>('[data-review-action="apply"]');
-      if (button) { button.disabled = !proposal.patch || busy || !!proposal.appliedAt || !!workspace?.appliedAt || workspace?.state === "discarded" || !parent; button.textContent = workspace?.appliedAt || proposal.appliedAt ? "Applied" : busy ? "Wait for tasks to finish" : "Apply to primary"; }
+      if (button) { button.disabled = this.applying.has(id) || !proposal.patch || busy || !!proposal.appliedAt || !!workspace?.appliedAt || workspace?.state === "discarded" || !parent; button.textContent = workspace?.appliedAt || proposal.appliedAt ? "Applied" : this.applying.has(id) ? "Applying…" : busy ? "Wait for tasks to finish" : "Apply to primary"; }
     }
   }
 }

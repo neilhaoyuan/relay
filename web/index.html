@@ -12,8 +12,7 @@
       <header class="topbar">
         <span class="brand">relay</span>
         <nav class="view-switcher" aria-label="Workspace views"><button id="view-tasks" data-view="tasks" aria-pressed="true">Tasks</button><button id="view-experiments" data-view="experiments" aria-pressed="false">Experiments</button><button id="view-review" data-view="review" aria-pressed="false">Review</button><button id="view-code" data-view="code" aria-pressed="false">Code</button></nav>
-        <button id="title-new" class="quiet">New workspace</button>
-        <button id="command-button" class="command-button" title="Command palette (Ctrl+Shift+P)"><span id="window-title">Relay</span><kbd>Ctrl Shift P</kbd></button>
+        <button id="command-button" class="command-button" title="Command palette (Ctrl+Shift+P)"><span id="window-title">Commands</span><kbd>Ctrl Shift P</kbd></button>
         <div class="title-actions ide-only">
           <button id="toggle-sidebar" class="icon-button" title="Toggle sidebar (Ctrl+B)" aria-label="Toggle sidebar" aria-pressed="true"><svg viewBox="0 0 20 20"><rect x="2" y="3" width="16" height="14" rx="1"/><path d="M7 3v14"/></svg></button>
           <button id="toggle-terminal" class="icon-button" title="Toggle terminal (Ctrl+J)" aria-label="Toggle terminal" aria-pressed="true"><svg viewBox="0 0 20 20"><rect x="2" y="3" width="16" height="14" rx="1"/><path d="M2 12h16"/></svg></button>
@@ -22,11 +21,8 @@
       </header>
       <nav class="activitybar" aria-label="Views">
         <button id="activity-explorer" title="Explorer (Ctrl+B)" aria-label="Explorer" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M8 3h10l3 3v15H8zM8 3v3H3v13h5M17 3v5h4"/></svg></button>
-        <button id="activity-workspaces" title="Workspaces" aria-label="Workspaces"><svg viewBox="0 0 24 24"><path d="M3 6h7l2 3h9v12H3zM6 6V3h15v6"/></svg></button>
         <button id="activity-agent" title="Codex" aria-label="Codex" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 4h16v13H9l-5 4zM8 8l-2 3 2 3m8-6 2 3-2 3m-3-7-2 8"/></svg></button>
-        <div class="activity-spacer"></div>
         <button id="activity-terminal" title="Terminal (Ctrl+J)" aria-label="Terminal" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="m4 6 6 6-6 6m9 0h7"/></svg></button>
-        <button id="reset-layout" title="Reset layout" aria-label="Reset layout"><svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1 0 7M4 3v6h6"/></svg></button>
       </nav>
       <aside id="sidebar" class="sidebar">
         <div class="pane-heading"><span id="sidebar-heading">WORKSPACES</span> <button id="new-workspace" class="icon-button" title="New workspace" aria-label="New workspace">+</button></div>
@@ -35,11 +31,10 @@
           <div class="section-heading"><span id="explorer-name">FILES</span><div><button id="new-file" class="icon-button" title="New file" aria-label="New file" disabled>+</button><button id="refresh-files" class="icon-button" title="Refresh files" aria-label="Refresh files" disabled>↻</button></div></div>
           <div id="file-tree" class="file-tree"><p class="muted small">Open a workspace to browse files.</p></div>
         </section>
-        <div class="sidebar-bottom"><div class="section-heading">SERVER</div><div id="system-status">Connecting…</div></div>
       </aside>
       <div id="sidebar-resizer" class="resizer vertical" role="separator" tabindex="0" aria-label="Resize sidebar" aria-orientation="vertical" aria-controls="sidebar"></div>
       <main class="main-area">
-        <div id="workspace-header" hidden>          <div class="workspace-bar"><div class="workspace-title"><span id="workspace-kind">PRIMARY</span><h1 id="workspace-name"></h1></div><div class="workspace-actions"><span id="environment-state" class="badge"></span><button id="environment-toggle">Start environment</button><button id="experiment-button">Experiment</button><button id="parallel-button">Parallel tasks</button><button id="review-button" hidden>Review changes</button><button id="discard-button" class="danger quiet" hidden>Discard</button></div></div>
+        <div id="workspace-header" hidden>          <div class="workspace-bar"><div class="workspace-title"><span id="workspace-kind">PRIMARY</span><h1 id="workspace-name"></h1></div><div class="workspace-actions"><button id="environment-toggle">Start environment</button><button id="experiment-button">Experiment</button><button id="parallel-button">Parallel tasks</button><button id="review-button" hidden>Review changes</button><button id="discard-button" class="danger quiet" hidden>Discard</button></div></div>
           <div id="runtime-notice" class="notice" hidden></div>
 </div>
         <section id="tasks-view" class="hub-view">
@@ -51,7 +46,7 @@
         <section id="experiments-view" class="hub-view" hidden><header class="hub-heading"><div><h1>Experiments</h1><p>Independent copies of your project. Compare approaches before applying changes.</p></div><div><button id="hub-experiment">New experiment</button><button id="hub-parallel">Parallel tasks</button><button id="compare-experiments" class="primary" disabled>Compare changes (0/2)</button></div></header><div id="experiment-list" class="experiment-list"></div></section>
         <section id="review-view" class="hub-view" hidden><header class="hub-heading"><div><h1>Review changes</h1><p>Inspect a saved diff, then explicitly apply it to its primary workspace.</p></div><div><label class="sr-only" for="review-target">Review target</label><select id="review-target"><option value="">Select an experiment?</option></select><button id="load-review">Load review</button></div></header><div id="review-panels" class="review-panels"><div class="hub-empty"><h2>No review selected</h2><p>Choose an experiment, or compare two from the Experiments view.</p></div></div></section>
         <section id="welcome" class="welcome" hidden>
-          <h1>Relay</h1><p class="welcome-subtitle">Development workspace</p>
+          <h1>Code</h1><p class="welcome-subtitle">Open a workspace to start editing.</p>
           <div class="welcome-columns"><div><h2>Start</h2><button id="welcome-new" class="text-button">New workspace / Clone repository…</button><button id="welcome-commands" class="text-button">Show all commands…</button></div><div><h2>Shortcuts</h2><dl><dt>Command palette</dt><dd><kbd>Ctrl Shift P</kbd></dd><dt>Toggle sidebar</dt><dd><kbd>Ctrl B</kbd></dd><dt>Toggle terminal</dt><dd><kbd>Ctrl J</kbd></dd><dt>Save file</dt><dd><kbd>Ctrl S</kbd></dd></dl></div></div>
           <p id="connection-error" class="error" role="alert" hidden></p>
         </section>
@@ -69,7 +64,6 @@
           </div>
         </section>
       </main>
-      <footer class="statusbar"><span id="connection">Connecting…</span><span id="footer-status">Relay</span></footer>
     </div>
     <dialog id="palette" class="palette" aria-label="Command palette"><input id="command-search" aria-label="Search commands" placeholder="Type a command…" autocomplete="off" /><div id="command-results"></div><p class="palette-help">↑ ↓ navigate · Enter run · Esc close</p></dialog>
     <dialog id="modal"><form id="modal-form"><div class="modal-top"><span>RELAY</span><button type="button" id="close-modal" class="icon-button" aria-label="Close dialog">×</button></div><h2 id="modal-title"></h2><div id="modal-body"></div><p id="modal-error" class="error" role="alert"></p><div class="modal-footer"><button type="button" id="cancel-modal">Cancel</button><button id="modal-submit" class="primary" type="submit">Create</button></div></form></dialog>

@@ -38,7 +38,7 @@ try {
   page.on("pageerror",error=>errors.push(error.message));
   await page.goto(origin);
   assert.equal(await page.locator("#tasks-view").isVisible(),true);
-  await page.locator("#title-new").click();
+  await page.locator("#new-workspace").click();
   await page.getByLabel("Workspace name").fill("Relay acceptance workspace");
   await page.locator("#modal-submit").click();
   await page.locator("#view-code").click();
@@ -47,7 +47,7 @@ try {
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.insertText("# Relay acceptance workspace\n\nEdited and saved through the browser IDE.\n");
   await page.keyboard.press("ControlOrMeta+s");
-  await page.getByText("File saved",{exact:true}).waitFor();
+  await page.waitForFunction(()=>document.querySelector("#save-file").disabled);
   const state=await page.evaluate(async()=>fetch("/api/state").then(response=>response.json()));
   const id=state.workspaces[0].id;
   assert.match(await readFile(join(dataDir,"workspaces",id,"source","README.md"),"utf8"),/Edited and saved/);
@@ -112,6 +112,7 @@ try {
   assert.equal(await page.locator("#tasks-view").isVisible(),true);
   await page.locator("#view-code").click();
   await page.getByRole("button",{name:"⌑ README.md"}).click();
+  await content.filter({hasText:"Edited and saved through the browser IDE"}).waitFor();
   assert.match(await content.innerText(),/Edited and saved through the browser IDE/);
   assert.equal(await page.locator("#login").count(),0);
   assert.equal((await page.locator("#sidebar").boundingBox()).width,sidebarWidth);
@@ -130,7 +131,8 @@ try {
   const runB={...runA,id:randomUUID(),workspaceId:childB.id,title:"Alternative pagination",state:"failed",error:"Test command exited with code 1."};
   const fixture={...state,workspaces:[parent,childA,childB],runs:[runA,runB],system:{...state.system,docker:true,imageReady:true,message:"Ready"}};
   const patch="diff --git a/src/index.ts b/src/index.ts\nindex 1111111..2222222 100644\n--- a/src/index.ts\n+++ b/src/index.ts\n@@ -1 +1 @@\n-export const pageSize = 10;\n+export const pageSize = 20;\n";
-  const proposals=new Map([childA,childB].map(w=>[w.id,{id:randomUUID(),workspaceId:w.id,parentId:id,baseFingerprint:"base",resultFingerprint:"result",patch,summary:"src/index.ts | 2 +-",createdAt:new Date().toISOString(),appliedAt:null}]));
+  const extraPatch="diff --git a/image.bin b/image.bin\nindex 111..222 100644\nGIT binary patch\nliteral 2\nabc\ndiff --git a/deleted.md b/deleted.md\ndeleted file mode 100644\n--- a/deleted.md\n+++ /dev/null\n@@ -1 +0,0 @@\n-old content\n";
+  const proposals=new Map([childA,childB].map(w=>[w.id,{id:randomUUID(),workspaceId:w.id,parentId:id,baseFingerprint:"base",resultFingerprint:"result",patch:patch+extraPatch,summary:"3 files changed",createdAt:new Date().toISOString(),appliedAt:null}]));
   let createdRequest, approvalResolved=false;
   await page.route("**/api/state",route=>route.fulfill({json:fixture}));
   await page.route("**/api/workspaces/**",async route=>{
@@ -174,6 +176,12 @@ try {
   await page.locator(".review-card").filter({hasText:"Pagination approach B"}).getByRole("button",{name:"src/index.ts",exact:true}).waitFor();
   assert.equal(await page.locator(".split-diff").count(),2);
   assert.match(await page.locator(".split-diff").first().innerText(),/pageSize = 20/);
+  const firstReview=page.locator(`[data-review-workspace="${childA.id}"]`);
+  await firstReview.getByRole("button",{name:"image.bin · binary",exact:true}).click();
+  await firstReview.getByText("Binary file changed.",{exact:false}).waitFor();
+  await firstReview.getByRole("button",{name:"deleted.md · deleted",exact:true}).click();
+  assert.match(await firstReview.locator(".split-diff").innerText(),/old content/);
+  await firstReview.getByRole("button",{name:"src/index.ts",exact:true}).click();
   await page.screenshot({path:join(root,"relay-review.png"),fullPage:true});
   page.once("dialog",dialog=>dialog.accept());
   await page.locator(`[data-review-workspace="${childA.id}"]`).getByRole("button",{name:"Apply to primary",exact:true}).click();
@@ -193,8 +201,8 @@ try {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false,"Task view overflows mobile viewport");
   await page.screenshot({path:join(root,"relay-tasks-mobile.png"),fullPage:true});
   assert.deepEqual(errors,[]);
-  console.log("Browser checks passed: token-free access, HTTP/WebSocket origin checks, workspace creation, editing/saving, resizing, panel docking and toggles, command palette, tab dragging/closing, undo preservation, persisted layout, mobile views, no browser exceptions.");
-  console.log("Screenshots: .test-data/relay-ide.png and .test-data/relay-mobile.png");
+  console.log("Browser checks passed: token-free access, HTTP/WebSocket origin checks, workspace creation, editing/saving, resizing, panel docking and toggles, command palette, tab dragging/closing, undo preservation, persisted layout, mobile views, task creation/filtering/approval/cancellation, experiment comparison, review application/conflicts, no browser exceptions.");
+  console.log("Screenshots: .test-data/relay-{ide,mobile,tasks,review,tasks-mobile}.png");
 } finally {
   console.log("Closing acceptance-test browser…");
   await browser?.close();

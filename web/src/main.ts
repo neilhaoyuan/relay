@@ -64,11 +64,10 @@ terminal.onData(data => { if (terminalSocket?.readyState === WebSocket.OPEN) ter
 function renderControls(): void {
   const workspace = selected(); if (!workspace) { for (const id of ["send-prompt", "task-open-code", "task-review", "codex-login", "connect-terminal"]) $<HTMLButtonElement>(id).disabled = true; return; }
   $("workspace-name").textContent = workspace.name;
-  $("window-title").textContent = `${workspace.name} — Relay`;
+  $("window-title").textContent = workspace.name;
   $("explorer-name").textContent = workspace.name.toUpperCase();
   document.title = `${workspace.name} — Relay`;
   $("workspace-kind").textContent = workspace.kind === "primary" ? "PRIMARY WORKSPACE" : workspace.kind === "agent" ? "PARALLEL AGENT" : "EXPERIMENT";
-  $("environment-state").textContent = workspace.state; $("environment-state").className = `badge ${workspace.state}`;
   $("environment-toggle").textContent = workspace.state === "running" ? "Stop environment" : "Start environment";
   $<HTMLButtonElement>("environment-toggle").disabled = !state.system.docker || (!state.system.imageReady && workspace.state !== "running");
   for (const id of ["experiment-button", "parallel-button"]) { $(id).hidden = workspace.kind !== "primary"; $<HTMLButtonElement>(id).disabled = !!busy() || !state.system.docker; }
@@ -94,8 +93,7 @@ function renderControls(): void {
 }
 function renderState(): void {
   const workspaces = state.workspaces.filter(workspace => workspace.state !== "discarded");
-  $("workspaces").innerHTML = workspaces.length ? workspaces.map(workspace => `<button class="workspace-item ${workspace.id === selectedId ? "selected" : ""} ${workspace.kind !== "primary" ? "child" : ""}" data-workspace="${workspace.id}" title="${escape(workspace.name)}"><span class="workspace-glyph">${workspace.kind === "primary" ? "▣" : workspace.kind === "experiment" ? "◇" : "⑂"}</span><span><strong>${escape(workspace.name)}</strong><small>${workspace.kind} · ${workspace.state}${workspace.appliedAt ? " · applied" : ""}</small></span></button>`).join("") : '<p class="small muted" style="padding:10px">Your projects will appear here.</p>';
-  $("system-status").innerHTML = `<span class="status-dot"></span>${state.system.docker ? "Docker connected" : "Docker unavailable"}<br><span class="muted">${state.system.hostCpus} CPUs · ${(state.system.hostMemoryMb / 1024).toFixed(1)} GB RAM<br>${state.runs.filter(run => !finished.has(run.state) && run.state !== "queued").length} / ${state.system.maxAgents} active agents</span>`;
+  $("workspaces").innerHTML = workspaces.length ? workspaces.map(workspace => `<button class="workspace-item ${workspace.id === selectedId ? "selected" : ""} ${workspace.kind !== "primary" ? "child" : ""}" data-workspace="${workspace.id}" title="${escape(workspace.name)}"><span class="workspace-glyph">${workspace.kind === "primary" ? "▣" : workspace.kind === "experiment" ? "◇" : "⑂"}</span><span><strong>${escape(workspace.name)}</strong><small>${workspace.kind === "primary" ? "Primary" : workspace.kind === "agent" ? "Agent" : "Experiment"}${workspace.appliedAt ? " · Applied" : ""}</small></span></button>`).join("") : '<p class="small muted" style="padding:10px">Your projects will appear here.</p>';
   $("welcome").hidden = view !== "code" || !!selectedId; $("workspace-view").hidden = view !== "code" || !selectedId;
   $("workspace-header").hidden = !selectedId;
   for (const id of ["new-file", "refresh-files"]) $<HTMLButtonElement>(id).disabled = !selectedId || selected()?.state === "discarded";
@@ -116,16 +114,15 @@ async function refresh(): Promise<void> {
     state = await api<State>("/state");
     if (selectedId && !state.workspaces.some(workspace => workspace.id === selectedId)) selectedId = "";
     renderState(); if (selectedRunId) await catchUp(selectedRunId);
-    $("footer-status").textContent = `Relay / ${state.workspaces.filter(workspace => workspace.state !== "discarded").length} workspaces`;
   } finally { refreshing = false; }
 }
 function scheduleRefresh(): void { if (refreshTimer !== undefined) return; refreshTimer = window.setTimeout(() => { refreshTimer = undefined; void action(refresh); }, 300); }
 function connectEvents(): void {
   if (!authenticated) return;
   const socket = new WebSocket(socketUrl("/ws/events")); eventSocket = socket;
-  socket.onopen = () => { $("connection").textContent = "● Connected"; scheduleRefresh(); };
+  socket.onopen = scheduleRefresh;
   socket.onmessage = scheduleRefresh;
-  socket.onclose = () => { if (!authenticated) return; $("connection").textContent = "Reconnecting…"; window.setTimeout(connectEvents, 2000); };
+  socket.onclose = () => { if (!authenticated) return; window.setTimeout(connectEvents, 2000); };
 }
 
 async function chooseWorkspace(id: string): Promise<void> {
@@ -227,7 +224,7 @@ async function saveFile(): Promise<void> {
   const content = file.content;
   const saved = await api<FileDocument>(`${workspacePath(id)}/file`, "PUT", { path: file.path, content, version: file.version });
   if (id !== selectedId) return;
-  file.saved = content; file.version = saved.version; renderTabs(); toast("File saved");
+  file.saved = content; file.version = saved.version; renderTabs();
 }
 on("save-file", saveFile); on("refresh-files", loadTree);
 on("reload-file", async () => { if (!currentFile) return; const file = documents.get(currentFile)!; if (file.content !== file.saved && !confirm("Discard your unsaved edits and reload this file?")) return; await openFile(currentFile, true); });
@@ -249,7 +246,14 @@ function importModal(): void {
     const workspace = await api<Workspace>("/workspaces", "POST", { name: data.get("name"), repository: data.get("repository") }); await refresh(); await chooseWorkspace(workspace.id);
   });
 }
-on("new-workspace", importModal); on("welcome-new", importModal); on("title-new", importModal);
+on("new-workspace", importModal); on("welcome-new", importModal);
+// Keep the existing + control reachable when the sidebar is hidden on small screens.
+const compactNavigation = matchMedia("(max-width: 900px)");
+const workspaceButtonHome = $("new-workspace").parentElement!;
+function placeWorkspaceButton(): void {
+  (compactNavigation.matches ? document.querySelector<HTMLElement>(".topbar")! : workspaceButtonHome).append($("new-workspace"));
+}
+compactNavigation.addEventListener("change", placeWorkspaceButton); placeWorkspaceButton();
 function newTask(): void {
   const projects = state.workspaces.filter(w => w.kind === "primary" && w.state !== "discarded");
   if (!projects.length) { importModal(); return; }
@@ -411,4 +415,4 @@ commandPalette([
 window.addEventListener("beforeunload", event => { if (dirty()) { event.preventDefault(); event.returnValue = ""; } });
 window.setInterval(() => { if (authenticated) scheduleRefresh(); }, 5000);
 setView("tasks");
-void enter().catch(error => { $("connection-error").hidden = false; $("connection-error").textContent = (error as Error).message; $("connection").textContent = "Disconnected"; });
+void enter().catch(error => { $("connection-error").hidden = false; $("connection-error").textContent = (error as Error).message; });

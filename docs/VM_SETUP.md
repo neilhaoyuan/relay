@@ -62,17 +62,19 @@ On your other device, connect Tailscale and open that HTTPS URL. The IDE opens d
 
 Daily use is now: connect Tailscale, open your saved Relay URL, and work. The VM and Relay must remain running. Tailscale must be connected on the viewing device. Enable the Relay systemd service below for startup after reboot.
 
-Check access from a second network, then open a workspace and verify the connection indicator and terminal. If requests or sockets fail, check the exact `RELAY_PUBLIC_ORIGIN` and restart Relay. If the URL cannot be reached, check both devices in `tailscale status`, your Tailscale access rules, and `tailscale serve status`. If Serve reports a backend error, check that Relay is running on port 8080.
+Check access from a second network, then open a workspace and verify that task updates and the terminal work. If requests or sockets fail, check the exact `RELAY_PUBLIC_ORIGIN` and restart Relay. If the URL cannot be reached, check both devices in `tailscale status`, your Tailscale access rules, and `tailscale serve status`. If Serve reports a backend error, check that Relay is running on port 8080.
 
 ## First workspace and Codex login
 
 Create a workspace from an HTTPS Git URL, an existing server-authorized `git@host:owner/repo.git` URL, or an empty repository. Private Git access uses the server user's Git/SSH setup. Never put an access token into the repository URL.
 
-Start the environment. Click **Log into Codex**; this runs `codex login --device-auth` in its terminal. Complete the displayed login flow. If your account does not permit device authentication, configure the supported Codex login method in that terminal before continuing. Relay does not implement its own OAuth flow.
+Start the environment and open **Code**. Click **Log into Codex** in the terminal; this runs `codex login --device-auth`. Complete the displayed login flow. If your account does not permit device authentication, configure the supported Codex login method in that terminal before continuing. Relay does not implement its own OAuth flow.
 
 The `/codex` directory is mounted from Relay's shared persistent Codex home. Log in once; new environments use that login while keeping separate source directories and thread IDs. This is intended for your own trusted repositories.
 
 Use the terminal to install dependencies (`npm ci` where a lockfile exists), run tests, or inspect Git. Dependency directories are not copied into experiments; install them again there as needed.
+
+Return to **Tasks** to create a named task in an isolated copy or directly in the primary workspace. Follow its output and approvals there. **Experiments** lists independent attempts and lets you select two for comparison. **Review** shows changed files and explicit application controls. **Code** remains available for manual editing and terminal access; switching views does not stop a task or clear unsaved edits.
 
 ## Install as a service
 

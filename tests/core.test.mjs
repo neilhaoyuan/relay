@@ -110,6 +110,7 @@ test("parallel agents use equivalent independent snapshots and obey total concur
   const copies = await service.copies(main.id, [{name:"a",prompt:"first"},{name:"b",prompt:"second"},{name:"c",prompt:"third"}]);
   assert.equal(new Set(copies.map(copy=>copy.baseFingerprint)).size,1);
   assert.equal(new Set(copies.map(copy=>copy.id)).size,3);
+  assert.equal(service.runs().find(run=>run.workspaceId===copies[0].id).title,"a");
   await service.tick(); await settled();
   assert.equal(runtime.agents.length,2); assert.equal(service.runs().filter(run=>run.state==="queued").length,1);
   runtime.agents[0].process.complete("failed"); await settled(); await service.tick(); await settled();

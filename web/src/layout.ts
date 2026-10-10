@@ -21,14 +21,8 @@ export class Layout {
     for (const id of ["toggle-sidebar", "activity-explorer"]) element(id).onclick = () => this.toggle("sidebar");
     for (const id of ["toggle-agent", "activity-agent", "close-agent"]) element(id).onclick = () => this.toggle("agent");
     for (const id of ["toggle-terminal", "activity-terminal", "close-terminal"]) element(id).onclick = () => this.toggle("terminal");
-    element("activity-workspaces").onclick = () => {
-      if (this.mobile.matches) this.mobileSidebar = true; else this.prefs.sidebarVisible = true;
-      (element("workspace-section") as HTMLDetailsElement).open = true;
-      this.render(); this.save(); element("new-workspace").focus();
-    };
     element("maximize-terminal").onclick = () => { this.maximized = !this.maximized; this.render(); };
     element("move-agent").onclick = () => { this.prefs.agentLeft = !this.prefs.agentLeft; this.render(); this.save(); };
-    element("reset-layout").onclick = () => this.reset();
     this.splitter("sidebar", "sidebar-resizer", false, () => 1);
     this.splitter("agent", "agent-resizer", false, () => this.prefs.agentLeft ? 1 : -1);
     this.splitter("terminal", "terminal-resizer", true, () => -1);

@@ -50,23 +50,25 @@ This document inventories the rebuild. Every handwritten application module begi
 | --- | --- |
 | `web/package.json` | Browser scripts and dependencies, including CodeMirror, language support, xterm, Vite, and shared contracts. |
 | `web/tsconfig.json` | Existing strict browser TypeScript checking with DOM types and bundler resolution. |
-| `web/index.html` | IDE shell: activity rail, combined workspace/file explorer, draggable tabs, editor, resizable terminal and Codex panels, command palette, and dialogs. Opens without a login screen. |
-| `web/src/main.ts` | Connects UI actions to the backend; manages workspace/file selection, unsaved changes, task submissions, event catch-up, approvals, experiments, parallel tasks, review, and terminal attachment. Rebuilt. |
+| `web/index.html` | Task workspace shell with Tasks/Experiments/Review/Code navigation, task filters/detail, comparison controls, and the secondary IDE's explorer, tabs, editor, terminal, palette, and dialogs. Opens without a login screen; workspace creation uses the + control, with server metrics and connection footers removed. |
+| `web/src/main.ts` | Connects Tasks/Experiments/Review/Code views to the backend; manages named task creation, workspace/file selection, unsaved changes, event catch-up, approvals, experiments, promotion, and terminal attachment. |
+| `web/src/tasks.ts` | New task-board module: run/status/project filters, live activity summaries from command events, experiment grouping, two-copy selection, and task/code/review/discard actions. |
+| `web/src/review.ts` | New review module: loads proposals, parses patch files/hunks, displays snapshot/result diffs and parallel comparisons, handles binary changes and bounded previews, downloads complete patches, and invokes guarded application. |
 | `web/src/api.ts` | Same-origin fetch wrapper and WebSocket URL builder for private network access. |
 | `web/src/editor.ts` | Configures CodeMirror with language highlighting, search, per-file undo/selection state, line numbers, editing, and save shortcuts. |
 | `web/src/layout.ts` | New IDE interaction module: pointer/keyboard resizing, collapsible panels, Codex docking, terminal maximization, mobile overlays, localStorage preferences, and searchable command palette. |
-| `web/src/style.css` | VS Code-style dark interface with compact controls, blue accents, panel dividers, activity rail, dialogs, and mobile overlays. |
+| `web/src/style.css` | VS Code-style dark interface with compact controls, blue accents, panel dividers, a simplified activity rail, dialogs, and mobile overlays. Branding is hidden in Code. |
 
 ## Contracts, deployment, tests, and documentation
 
 | File | What it does |
 | --- | --- |
 | `packages/contracts/package.json` | Declares the type-only `@relay/contracts` workspace. New. |
-| `packages/contracts/index.d.ts` | Shared shapes for workspaces, task states, events, files, proposals, and server capacity. New. |
+| `packages/contracts/index.d.ts` | Shared shapes for workspaces, named tasks (optional titles for older records), states, events, files, proposals, and server capacity. |
 | `infrastructure/Dockerfile.workspace` | Builds the Node.js/TypeScript execution image with Git, Bash, compilation tools, and pinned Codex 0.160.0. Uses a non-root default user. New. |
 | `infrastructure/relay.service` | systemd unit for the trusted backend, with service restart, a persistent data location, and Docker group access. New. |
 | `tests/core.test.mjs` | Actual Git/SQLite tests covering durability, path safety, stale writes, dirty snapshots, isolated copies, promotion, scheduling, recovery, and loopback/host/origin access checks. Docker and inference are simulated. |
-| `tests/browser-smoke.mjs` | Real-server browser checks for token-free access, HTTP/WebSocket origins, files, saves, splitter resizing, panel docking/visibility, command palette, tab reordering/closing, undo preservation, layout persistence, and mobile views. Saves screenshots locally. |
+| `tests/browser-smoke.mjs` | Real-server checks for network access, files, and IDE interactions; explicit API fixtures test task creation/filtering/approvals/cancellation, experiment comparison, binary/deleted-file previews, and apply/conflict UI. Also checks unsaved edits across views, mobile layouts, and saves screenshots. |
 | `docs/FILE_MAP.md` | This inventory; the requested explanation of every application/configuration file and directory. New. |
 | `docs/ARCHITECTURE.md` | Records the agreed first scope, module boundaries, lifecycle rules, trust assumptions, and limitations. New. |
 | `docs/VM_SETUP.md` | Documents deployment, private Tailscale HTTPS access, daily use, acceptance checks, service operation, and backup procedure. New. |
@@ -93,6 +95,7 @@ This document inventories the rebuild. Every handwritten application module begi
 | `.test-data/codex-home/` | Empty/temporary Codex configuration used to inspect CLI capabilities without using the owner's login. |
 | `.test-data/core-*`, `.test-data/events-*`, `.test-data/browser-*` | Isolated test workspaces, normally deleted by test teardown. |
 | `.test-data/relay-ide.png`, `.test-data/relay-mobile.png` | Desktop and mobile browser acceptance screenshots. |
+| `.test-data/relay-tasks.png`, `.test-data/relay-review.png`, `.test-data/relay-tasks-mobile.png` | Task-board, comparison, and mobile task screenshots using explicitly simulated agent API data in browser tests. |
 | `.npm-cache/` | Local npm download cache and package installation diagnostics. |
 | `node_modules/` | Installed dependencies and npm workspace links. |
 | `server/dist/` | Compiled backend JavaScript, generated by `tsc`. |

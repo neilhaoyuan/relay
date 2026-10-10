@@ -26,7 +26,7 @@ p { line-height: 1.6; }
 .small { font-size: 11px; }
 a, .text-button { color: #4daafc; }
 kbd { font: 11px "Segoe UI", sans-serif; color: #b6b6b6; background: #333; padding: 1px 4px; border: 1px solid #494949; border-radius: 3px; white-space: nowrap; }
-.app { display: grid; grid-template-columns: 48px var(--sidebar-width) 4px minmax(0, 1fr); grid-template-rows: 35px minmax(0, 1fr) 22px; height: 100dvh; }
+.app { display: grid; grid-template-columns: 48px var(--sidebar-width) 4px minmax(0, 1fr); grid-template-rows: 35px minmax(0, 1fr); height: 100dvh; }
 .topbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; background: #323233; padding: 0 9px; border-bottom: 1px solid #252526; min-width: 0; }
 .brand { font-weight: 600; font-size: 15px; margin: 0 5px; }
 .command-button { margin: 0 auto; width: min(420px, 42vw); background: #3c3c3c; border-color: #505050; color: #aaa; display: flex; justify-content: space-between; gap: 10px; font-size: 12px; min-width: 0; }
@@ -38,7 +38,6 @@ kbd { font: 11px "Segoe UI", sans-serif; color: #b6b6b6; background: #333; paddi
 .activitybar button:hover { color: #fff; }
 .activitybar button[aria-pressed="true"] { color: #eee; border-left-color: #eee; }
 .activitybar svg { width: 24px; height: 24px; }
-.activity-spacer { flex: 1; }
 .sidebar { grid-column: 2; grid-row: 2; background: #252526; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 .pane-heading { display: flex; align-items: center; justify-content: space-between; height: 35px; min-height: 35px; padding: 0 12px; font-size: 11px; gap: 8px; }
 .pane-heading > div, .section-heading > div { display: flex; align-items: center; gap: 2px; }
@@ -69,9 +68,6 @@ summary.section-heading { display: list-item; cursor: pointer; }
 .file-tree summary::-webkit-details-marker { display: none; }
 .file-tree summary::before { content: '›'; width: 9px; }
 .file-tree details[open] > summary::before { content: '⌄'; }
-.sidebar-bottom { border-top: 1px solid var(--line); }
-#system-status { padding: 8px 12px; font-size: 11px; line-height: 1.7; }
-.status-dot { display: inline-block; width: 5px; height: 5px; background: #89d185; border-radius: 50%; margin-right: 6px; }
 .resizer { background: transparent; position: relative; z-index: 3; touch-action: none; user-select: none; }
 .resizer:hover, .resizer:focus-visible, .resizer.dragging { background: #007fd4; outline: none; }
 .resizer.vertical { cursor: col-resize; width: 4px; }
@@ -147,7 +143,6 @@ dd { margin: 0; }
 .approval p { max-height: 100px; overflow: auto; white-space: pre-wrap; }
 .approval button { margin-right: 6px; }
 #approvals { max-height: 40%; overflow: auto; }
-.statusbar { grid-column: 1 / -1; grid-row: 3; display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #007acc; color: white; padding: 0 12px; font-size: 11px; }
 .app.sidebar-hidden { grid-template-columns: 48px 0 0 minmax(0, 1fr); }
 .sidebar-hidden .sidebar, .sidebar-hidden #sidebar-resizer { display: none; }
 .agent-hidden .studio { grid-template-columns: minmax(0, 1fr); }
@@ -183,14 +178,14 @@ dialog.palette { top: 45px; margin: 0 auto; width: min(580px, 94vw); padding: 6p
 @media (max-width: 900px) {
   .app, .app.sidebar-hidden { grid-template-columns: 40px 0 0 minmax(0, 1fr); }
   .activitybar button { height: 43px; }
-  .sidebar { position: fixed; left: 40px; top: 35px; bottom: 22px; width: min(var(--sidebar-width), calc(100vw - 40px)); z-index: 5; box-shadow: 5px 0 20px #0008; }
+  .sidebar { position: fixed; left: 40px; top: 35px; bottom: 0; width: min(var(--sidebar-width), calc(100vw - 40px)); z-index: 5; box-shadow: 5px 0 20px #0008; }
   #sidebar-resizer { display: none; }
   .studio, .agent-left .studio { grid-template-columns: minmax(0, 1fr); }
   .agent-left .code-column { grid-column: 1; }
   #agent-resizer { display: none; }
   .agent-pane { position: absolute; right: 0; top: 0; bottom: 0; width: min(var(--agent-width), 100%); z-index: 4; box-shadow: -5px 0 20px #0008; }
   .agent-left .agent-pane { right: auto; left: 0; }
-  .command-button kbd, #title-new { display: none; }
+  .command-button kbd { display: none; }
   .command-button { width: auto; flex: 1; }
   .workspace-title { width: 100%; }
   .workspace-bar h1 { max-width: 200px; }
@@ -199,7 +194,6 @@ dialog.palette { top: 45px; margin: 0 auto; width: min(580px, 94vw); padding: 6p
   .notice { font-size: 10px; }
   .terminal-pane .pane-heading { padding: 0 6px; }
   .terminal-pane .pane-heading button { font-size: 10px; padding: 2px 3px; }
-  .statusbar { font-size: 10px; padding: 0 6px; }
 }
 /* Task workspace sits above the IDE; switching views preserves the mounted editor and PTY. */
 .main-area { display: flex; flex-direction: column; }
@@ -213,7 +207,6 @@ dialog.palette { top: 45px; margin: 0 auto; width: min(580px, 94vw); padding: 6p
 .task-mode #workspace-section { max-height: none; flex: 1; }
 .task-mode .sidebar > .pane-heading { height: 48px; min-height: 48px; }
 .task-mode .command-button { width: min(280px, 23vw); }
-.task-mode .statusbar { background: #252526; border-top: 1px solid #3b3b3b; color: #aaa; }
 .task-mode .workspace-bar { min-height: 48px; background: #222; }
 .hub-view { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 24px; gap: 16px; overflow: hidden; }
 .hub-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -319,5 +312,7 @@ dialog.palette { top: 45px; margin: 0 auto; width: min(580px, 94vw); padding: 6p
   .experiment-cards { grid-template-columns: minmax(0, 1fr); }
   .hub-heading > div:last-child { max-width: 100%; }
   #review-target { max-width: 180px; }
-  .task-mode #title-new { display: inline-block; font-size: 10px; padding: 3px; }
 }
+
+/* Keep branding on the task workspace; the Code view uses only the project title. */
+.app:not(.task-mode) .brand { display: none; }
