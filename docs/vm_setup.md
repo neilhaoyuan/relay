@@ -1,10 +1,12 @@
-# Run Relay on the Oracle VM
+# Self-host Relay on a Linux VM
+
+This guide sets up your own Relay server with Docker workspaces, persistent storage, and private browser access through Tailscale. Use a Linux VM from your preferred provider, including Oracle Cloud, or a Linux server you already own. You supply and maintain the server and sign into your own GitHub and Codex accounts.
 
 ## Prerequisites
 
 Use a supported Linux VM with Node.js 22.16 or newer, npm, Git, Docker Engine, Python 3, and C/C++ build tools (for `node-pty`). The workspace image installs its own Node/Git/build tools for project code. Build the image on the target machine so Docker selects the native architecture.
 
-Confirm the VM's actual CPU, RAM, and disk allocation before choosing limits. Oracle account creation does not guarantee that an eligible VM has been provisioned or that a requested shape has capacity. Keep access private with SSH forwarding or Tailscale; Relay defaults to loopback port 8080.
+Start with a provisioned VM and working SSH access. Confirm its actual CPU, RAM, and disk allocation before choosing limits. If using a provider's free tier, check the current allowance and available capacity in your account. Keep access private with SSH forwarding or Tailscale; Relay defaults to loopback port 8080.
 
 ## First manual launch
 

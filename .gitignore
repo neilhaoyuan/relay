@@ -7,3 +7,5 @@ web/dist/
 .relay-data/
 .relay-backup/
 .test-data/
+# Local design notes and historical documentation; not part of the published project.
+/local-docs/
