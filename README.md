@@ -1,3 +1,6 @@
+Since deprecated, go to:
+https://github.com/neilhaoyuan/relay-2
+
 # Relay
 
 a self-hosted platform for developing software with AI coding agents. run Relay on your own Linux server (i recommend the free oracle vm) and access your projects from a browser through tailscale.
